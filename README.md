@@ -69,6 +69,5 @@ python task_2.py
 * Если число доступных эпох меньше 10, графики не строятся, информация записывается в Excel
 
 
-* GitHub репозиторий с кодом: [https://github.com/nadyashanarova/eeg-analysis.git](https://github.com/nadyashanarova/eeg-analysis.git)
 * XLSX с предобработкой и статистикой находится в корне проекта (`Preprocessing_Results.xlsx`)
 * Графики ERP и эмоциональных метрик находятся в папках `erp_results/` и `emotions_results/`
