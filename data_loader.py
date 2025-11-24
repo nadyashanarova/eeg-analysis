@@ -9,11 +9,9 @@ class SubjectFileResolver:
 
     def resolve_pairs(self):
         all_files = os.listdir(self.input_dir)
-        subjects = {}
-        
         potential_ids = set()
         for f in all_files:
-            if "RAW" in f and f.endswith(".csv"):
+            if "RAW" in f.upper() and f.lower().endswith(".csv"):
                 pid = f.split('_')[0]
                 potential_ids.add(pid)
 
@@ -32,22 +30,21 @@ class SubjectFileResolver:
         return valid_pairs, missing_pairs
 
     def _find_raw(self, pid, files):
-        candidates = [f for f in files if f.startswith(pid) and "RAW" in f and "marker" not in f.lower()]
-        if candidates:
-            return os.path.join(self.input_dir, candidates[0])
+        candidates = [f for f in files if f.startswith(pid) and "RAW" in f.upper() and "marker" not in f.lower()]
+        if candidates: return os.path.join(self.input_dir, candidates[0])
         return None
 
     def _find_marker(self, pid, files):
         if pid == '0':
-            candidates = [f for f in files if f.startswith("0_") and "basic_pre_processing" in f]
+            candidates = [f for f in files if f.startswith("0") and "basic" in f.lower() and "processing" in f.lower()]
         else:
-            candidates = [f for f in files if f.startswith(pid) and "intervalMarker" in f]
+            candidates = [f for f in files if f.startswith(pid) and "marker" in f.lower()]
         
-        if candidates:
-            return os.path.join(self.input_dir, candidates[0])
+        if candidates: return os.path.join(self.input_dir, candidates[0])
         return None
 
 class EmotionExtractor:
+    
     def process_subject(self, sub_id, files):
         try:
             raw_df = pd.read_csv(files['raw'], skiprows=1, engine='python')
@@ -67,15 +64,14 @@ class EmotionExtractor:
                     rename_map[col] = target
                     metric_cols.append(target)
         
-        if not metric_cols:
-            return None
+        if not metric_cols: return None
 
         raw_df.rename(columns=rename_map, inplace=True)
         work_df = raw_df[[ts_col] + metric_cols].fillna(method='ffill').fillna(method='bfill')
 
         markers = self._extract_markers(files['marker'], sub_id)
         if not markers:
-            print(f"Skipping {sub_id}: No valid markers found.")
+            print(f"Subject {sub_id}: No markers found.")
             return None
 
         return self._cut_epochs(work_df, markers, sub_id, ts_col)
@@ -87,60 +83,54 @@ class EmotionExtractor:
             with open(path, 'r', encoding='utf-8', errors='ignore') as f:
                 if ';' in f.readline(): sep = ';'
             
-            m_df = pd.read_csv(path, sep=sep, engine='python')
-            m_df.columns = [c.lower().strip() for c in m_df.columns]
+            m_df = pd.read_csv(path, sep=sep, low_memory=False)
             
+
+            if sub_id == '0' and 'index' in m_df.columns:
+                last_marker = None
+                for raw_val in m_df['index'].astype(str):
+                    current_match = None
+                    
+                    for bad_name, good_name in cfg.NAME_MAPPING.items():
+                        if bad_name in raw_val:
+                            current_match = good_name
+                            break
+
+                    if not current_match:
+                        for target in cfg.ORDERED_STIMULI:
+                            if target in raw_val:
+                                current_match = target
+                                break
+                    
+                    if current_match:
+                        if current_match != last_marker:
+                            try:
+                                parts = raw_val.split(',')
+                                if len(parts) > 1:
+                                    markers.append((float(parts[1]), current_match))
+                            except: pass
+                        last_marker = current_match
+                    else:
+                        last_marker = None
+                
+                return markers
+
+            m_df.columns = [c.lower().strip() for c in m_df.columns]
             t_col = self._find_col(m_df, ['timestamp', 'latency', 'time'])
             label_cols = [c for c in m_df.columns if any(x in c for x in ['marker', 'label', 'type', 'desc'])]
             
-            use_order_strategy = (sub_id == '0')
-            pilot_timestamps = []
-
             for _, row in m_df.iterrows():
                 if pd.isna(row[t_col]): continue
                 t_val = float(row[t_col])
                 
-                matched_label = None
-                
                 for l_col in label_cols:
                     val = str(row[l_col]).strip().upper().replace(' ', '_')
+                    
+                    val = cfg.NAME_MAPPING.get(val, val)
+                    
                     if val in cfg.ORDERED_STIMULI:
-                        matched_label = val
+                        markers.append((t_val, val))
                         break
-                    for target in cfg.ORDERED_STIMULI:
-                        if target in val:
-                            matched_label = target
-                            break
-                
-                if matched_label:
-                    markers.append((t_val, matched_label))
-                
-                elif use_order_strategy:
-                    is_event = False
-                    for l_col in label_cols:
-                        val = str(row[l_col])
-                        if val and val.lower() not in ['nan', '0', '0.0', 'none', '']:
-                            is_event = True
-                            break
-                    if is_event:
-                        pilot_timestamps.append(t_val)
-
-            if use_order_strategy and not markers:
-                pilot_timestamps.sort()
-                
-                count_found = len(pilot_timestamps)
-                count_needed = len(cfg.ORDERED_STIMULI)
-                
-                if count_found != count_needed:
-                    print(f"  ❌ [Subject 0] Event mismatch! Found {count_found}, needed {count_needed}. SKIPPING this subject to avoid errors.")
-                    return [] 
-
-                limit = min(count_found, count_needed)
-                
-                for i in range(limit):
-                    stim_name = cfg.ORDERED_STIMULI[i]
-                    time_val = pilot_timestamps[i]
-                    markers.append((time_val, stim_name))
 
         except Exception as e:
             print(f"Marker parsing error for {sub_id}: {e}")
@@ -149,8 +139,6 @@ class EmotionExtractor:
 
     def _cut_epochs(self, df, markers, sub_id, ts_col):
         epochs = []
-        if df.empty: return None
-        
         file_start = df[ts_col].iloc[0]
         
         gender = 'Unknown'
@@ -179,6 +167,7 @@ class EmotionExtractor:
             chunk['Stimulus'] = m_label
             chunk['Subject'] = sub_id
             chunk['Gender'] = gender
+            
             chunk['time_bin'] = chunk['rel_time'].apply(lambda x: np.floor(x * 2) / 2)
             
             grouped = chunk.groupby(['time_bin', 'Stimulus', 'Subject', 'Gender'], as_index=False)[cfg.EMOTION_COLS].mean()

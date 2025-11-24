@@ -1,16 +1,27 @@
 INPUT_DIR = "raw_data"
-OUTPUT_DIR = "erp_results"
+OUTPUT_DIR = "ERP_results" 
+
 
 ORDERED_STIMULI = [
     "VK_JAPAN_INFO", "VK_JAPAN_COM", "VK_JAPAN_THR",
     "TG_JAPAN_INFO", "TG_JAPAN_COM", "TG_JAPAN_THR",
-    "TG_MUSK_INFO", "TG_MUSK_COM", "TG_MUSK_THR",
-    "VK_MASK_INFO", "VK_MUSK_COM", "VK_MUSK_THR",
+    "TG_MUSK_INFO",  "TG_MUSK_COM",  "TG_MUSK_THR",
+    "VK_MUSK_INFO",  "VK_MUSK_COM",  "VK_MUSK_THR",
     "VK_BORISOV_INFO", "VK_BORISOV_COM", "VK_BORISOV_THR",
     "TG_BORISOV_INFO", "TG_BORISOV_COM", "TG_BORISOV_THR",
-    "TG_EGE_INFO", "TG_EGE_COM", "TG_EGE_THR_1",
-    "VK_EGE_INFO", "VK_EGE_COM", "TG_EGE_THR_2"
+    "TG_EGE_INFO",   "TG_EGE_COM",   "TG_EGE_THR",
+    "VK_EGE_INFO",   "VK_EGE_COM",   "VK_EGE_THR"
 ]
+
+NAME_MAPPING = {
+    "TG_MASK_INFO": "TG_MUSK_INFO",
+    "VK_MASK_INFO": "VK_MUSK_INFO",
+    
+    "TG_EGE_THR_1": "TG_EGE_THR",
+    "TG_EGE_THR_2": "TG_EGE_THR",
+}
+
 
 STIMULI_MAP = {name.upper(): i + 1000 for i, name in enumerate(ORDERED_STIMULI)}
 ID_TO_NAME = {v: k for k, v in STIMULI_MAP.items()}
+
